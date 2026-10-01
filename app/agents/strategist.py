@@ -118,13 +118,25 @@ class ContentStrategistAgent:
                 }
             ]
 
+        recent_knowledge = user_profile.get("recent_knowledge_highlights", [])
+        recent_text = ""
+        if recent_knowledge:
+            lines = [f"- [{item.get('type', 'Item').upper()}] {item.get('title')}: {item.get('content', '')[:140]}" for item in recent_knowledge[:6]]
+            recent_text = "🔥 ATH'S MOST RECENTLY ADDED KNOWLEDGE (HIGHEST WEIGHTAGE - CONNECT IDEAS HERE FIRST):\n" + "\n".join(lines)
+
         prompt = f"""
 You are the elite Content Strategist for ATH (Ath Tripathi).
 Ath wants to build an authentic, magnetic LinkedIn presence as a hands-on AI builder.
 He does NOT want to post dry, boring academic paper summaries or generic news.
 He wants to tell HIS STORY: engineering battles, struggles, contrarian insights, behind-the-scenes architectural decisions, and honest lessons learned.
 
-ATH'S REAL STORIES & BATTLES:
+CRITICAL WEIGHTAGE REQUIREMENT:
+Give HIGHEST WEIGHTAGE to Ath's MOST RECENTLY ADDED knowledge items and active notes.
+Whenever possible, connect the external trend to what Ath just added or explored:
+
+{recent_text}
+
+ATH'S CORE FLAGSHIP PROJECTS & BACKGROUND:
 - Bodh AI: Built a real-time Hindi/Hinglish AI voice interviewer. Fought awkward pauses, end-to-end latency, and robotic dialogue flows. Learned that latency > model IQ for real-time speech.
 - Pixie: Desktop AI productivity agent built from scratch in Rust + Tauri + Python. Explicitly rejected LangChain/LangGraph, created custom lightweight tool schema attachments, and fought RAM/context limits on an 8GB machine.
 - RouteLLMESH: Built a custom self-hosted LLM gateway with heuristic model routing to stop burning money on OpenAI/Claude API bills.

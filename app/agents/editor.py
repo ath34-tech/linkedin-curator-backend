@@ -95,9 +95,17 @@ class EditorCriticAgent:
         user_profile: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Criticize and assign final score (0-10) to candidate idea using Human Writing Standards."""
-        # Baseline deterministic score calculation
+        recent_knowledge = user_profile.get("recent_knowledge_highlights", [])
+        recent_titles = [r.get("title", "").lower() for r in recent_knowledge if r.get("title")]
+
+        # Check if this idea connects to recent knowledge
+        conn_text = f"{idea.personal_connection or ''} {idea.why_user_can_talk_about_it or ''} {idea.title}".lower()
+        has_recent_connection = any(rt in conn_text for rt in recent_titles) if recent_titles else False
+
+        # Baseline deterministic score calculation (+1.5 boost if matching recent knowledge)
+        recency_bonus = 1.5 if has_recent_connection else 0.0
         base_score = round(
-            (idea.relevance * 3.5) + (idea.novelty * 3.0) + (idea.timeliness * 2.0) + (idea.confidence * 1.5),
+            min(10.0, (idea.relevance * 3.5) + (idea.novelty * 3.0) + (idea.timeliness * 2.0) + (idea.confidence * 1.5) + recency_bonus),
             1
         )
 
@@ -105,7 +113,7 @@ class EditorCriticAgent:
             return {
                 "approved": True,
                 "final_score": base_score,
-                "confidence": 0.85,
+                "confidence": 0.95 if has_recent_connection else 0.85,
                 "why_it_matters": idea.why_it_matters or "Direct technical relevance to current developer trends.",
                 "why_user_can_talk_about_it": idea.why_user_can_talk_about_it or idea.personal_connection,
                 "suggested_format": idea.suggested_format
@@ -118,9 +126,10 @@ Ath wants to build an authentic, magnetic LinkedIn presence as an AI builder who
 HUMAN WRITING PRINCIPLES CHECKLIST:
 1. SPECIFIC REAL POSITION: Does this make one clear, arguable claim rather than a generic survey?
 2. PERSONAL BUILDER SCARS: Is the idea anchored in Ath's real experience (Bodh AI voice latency, Pixie 8GB RAM constraints, RouteLLMESH routing, Vcriate code review insights)?
-3. REJECT BUZZWORDS & SLOP: Reject if it uses words like delve, tapestry, landscape, robust, seamless, unlock, elevate, foster, leverage, empower, game-changer.
-4. REJECT CLICHÉ STRUCTURES: Reject reflexive lists of three, drama-beat em-dashes, "it's not X, it's Y" punchlines, or "in today's fast-paced world".
-5. REJECT DRY PAPER SUMMARIES: Reject any idea that simply recaps external news without Ath's personal builder scar or counter-intuitive finding.
+3. RECENT KNOWLEDGE PRIORITY BOOST: Ath wants heavy weightage on his NEWEST KNOWLEDGE additions. If this idea draws upon his recent experiments or newly added notes, grant it an extra score boost (9.2–9.8)!
+4. REJECT BUZZWORDS & SLOP: Reject if it uses words like delve, tapestry, landscape, robust, seamless, unlock, elevate, foster, leverage, empower, game-changer.
+5. REJECT CLICHÉ STRUCTURES: Reject reflexive lists of three, drama-beat em-dashes, "it's not X, it's Y" punchlines, or "in today's fast-paced world".
+6. REJECT DRY PAPER SUMMARIES: Reject any idea that simply recaps external news without Ath's personal builder scar or counter-intuitive finding.
 
 CANDIDATE IDEA:
 - Title: {idea.title}
@@ -129,11 +138,12 @@ CANDIDATE IDEA:
 - Story Arc: {idea.explanation}
 - Personal Connection: {idea.personal_connection}
 - Format: {idea.suggested_format}
+- Matches Recent Knowledge: {"YES (HIGH PRIORITY)" if has_recent_connection else "Standard"}
 
 Evaluate and assign a final_score (0-10):
 {{
   "approved": true,
-  "final_score": 9.2,
+  "final_score": {9.5 if has_recent_connection else 9.0},
   "confidence": 0.95,
   "why_it_matters": "Why this narrative will generate high engagement and genuine developer respect on LinkedIn",
   "why_user_can_talk_about_it": "Why Ath's real projects give him the authentic authority to tell this story",

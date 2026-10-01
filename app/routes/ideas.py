@@ -30,7 +30,7 @@ def get_all_ideas(
 
 @router.get("/today", response_model=List[ContentIdeaResponse])
 def get_today_ideas(db: Session = Depends(get_db)):
-    # Return ideas marked as "today" or approved by editor created within last 24h
+    # Return ideas marked as "today" or candidate created within last 24h
     cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=1)
     ideas = db.query(ContentIdea).filter(
         ContentIdea.status.in_(["today", "candidate"]),
@@ -38,11 +38,11 @@ def get_today_ideas(db: Session = Depends(get_db)):
         ContentIdea.created_at >= cutoff
     ).order_by(ContentIdea.final_score.desc()).limit(10).all()
 
-    # Fallback to top recent approved ideas if today's count is low
+    # Fallback to recent approved ideas if today's count is low (NEVER return saved, posted, or skipped items)
     if len(ideas) < 5:
         fallback = db.query(ContentIdea).filter(
             ContentIdea.is_editor_approved == True,
-            ContentIdea.status != "skipped"
+            ContentIdea.status.in_(["today", "candidate"])
         ).order_by(ContentIdea.final_score.desc(), ContentIdea.created_at.desc()).limit(10).all()
         return fallback
 

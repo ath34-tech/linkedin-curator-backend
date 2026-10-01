@@ -31,17 +31,53 @@ class KnowledgeCuratorAgent:
             except Exception as e:
                 logger.warning(f"[{self.name}] Could not read {settings.ATH_MD_PATH}: {e}")
 
-        # 2. Gather DB knowledge items
-        notes = db.query(Note).filter(Note.is_approved == True).all()
-        projects = db.query(Project).all()
-        learning_items = db.query(LearningItem).all()
-        knowledge_items = db.query(KnowledgeItem).filter(KnowledgeItem.is_archived == False).all()
+        # 2. Gather DB knowledge items ordered by recency
+        notes = db.query(Note).filter(Note.is_approved == True).order_by(Note.created_at.desc()).all()
+        projects = db.query(Project).order_by(Project.created_at.desc()).all()
+        learning_items = db.query(LearningItem).order_by(LearningItem.created_at.desc()).all()
+        knowledge_items = db.query(KnowledgeItem).filter(KnowledgeItem.is_archived == False).order_by(KnowledgeItem.created_at.desc()).all()
         previous_posts = db.query(Post).order_by(Post.posted_at.desc()).limit(10).all()
         feedbacks = db.query(Feedback).order_by(Feedback.created_at.desc()).limit(30).all()
 
-        # Build raw text summary for synthesis
+        # Build highlighted most recent items (highest weightage)
+        most_recent_items = []
+        for k in knowledge_items[:6]:
+            most_recent_items.append({
+                "type": f"Knowledge ({k.item_type})",
+                "title": k.title,
+                "content": k.content,
+                "topics": k.topics or [],
+                "date": k.created_at.strftime("%Y-%m-%d") if k.created_at else "recent"
+            })
+        for n in notes[:5]:
+            most_recent_items.append({
+                "type": "Note",
+                "title": n.title,
+                "content": n.content or n.extracted_text or "",
+                "topics": n.topics or [],
+                "date": n.created_at.strftime("%Y-%m-%d") if n.created_at else "recent"
+            })
+        for l in learning_items[:5]:
+            most_recent_items.append({
+                "type": "Learning Log",
+                "title": l.topic,
+                "content": f"{l.description or ''} | Insights: {', '.join(l.key_insights or [])}",
+                "topics": [l.topic],
+                "date": l.created_at.strftime("%Y-%m-%d") if l.created_at else "recent"
+            })
+        for p in projects[:5]:
+            most_recent_items.append({
+                "type": "Project",
+                "title": p.name,
+                "content": f"{p.description or ''} | Stack: {', '.join(p.tech_stack or [])} | Learnings: {p.learnings or ''}",
+                "topics": p.tech_stack or [],
+                "date": p.created_at.strftime("%Y-%m-%d") if p.created_at else "recent"
+            })
+
+        # Build raw text summary for synthesis with recent items emphasized
         curated_context = {
             "ath_md": ath_markdown,
+            "most_recent_knowledge_priority": most_recent_items,
             "notes": [{"title": n.title, "content": n.content, "topics": n.topics} for n in notes],
             "projects": [{"name": p.name, "description": p.description, "tech_stack": p.tech_stack, "learnings": p.learnings} for p in projects],
             "learning": [{"topic": l.topic, "description": l.description, "insights": l.key_insights} for l in learning_items],
@@ -52,6 +88,7 @@ class KnowledgeCuratorAgent:
 
         # 3. Synthesize via Gemini if configured, else use deterministic rule-based profile
         profile_data = self._synthesize_profile(curated_context)
+        profile_data["recent_knowledge_highlights"] = most_recent_items
 
         # 4. Save/update UserProfile in DB
         user_profile = db.query(UserProfile).first()
@@ -84,75 +121,37 @@ class KnowledgeCuratorAgent:
             "topics_understood": user_profile.topics_understood,
             "topics_exploring": user_profile.topics_exploring,
             "content_areas": user_profile.content_areas,
-            "tone_guidelines": user_profile.tone_guidelines
+            "tone_guidelines": user_profile.tone_guidelines,
+            "recent_knowledge_highlights": most_recent_items
         }
 
     def _synthesize_profile(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Call Gemini to extract structured user profile or fallback gracefully."""
-        if not gemini_service.is_configured():
-            # Deterministic default extraction from known ath.md structure
-            return {
-                "bio": "Software Engineer & AI Systems Builder focused on applied AI, inference optimization, and developer tools.",
-                "interests": ["Inference Optimization", "Applied AI", "Agentic Architectures", "Developer Tools"],
-                "skills": ["Python", "FastAPI", "PyTorch", "SQLAlchemy", "React", "Docker"],
-                "current_learning": ["Inference Engineering (vLLM, AWQ, speculative decoding)", "Local Model Deployment"],
-                "active_projects": ["ATH Radar", "Local Inference Bench", "Smart Document Parser"],
-                "recurring_themes": ["Pragmatic engineering over hype", "Cost vs latency trade-offs", "Real-world failure modes"],
-                "topics_understood": ["Backend Architecture", "FastAPI", "SQLite/Postgres", "Agent Pipelines"],
-                "topics_exploring": ["Speculative decoding", "Quantization", "KV cache compression"],
-                "content_areas": ["Engineering trade-offs", "Local LLM experiments", "Builder retrospectives"],
-                "tone_guidelines": "Authentic, technical depth, pragmatic builder, no buzzword hype."
-            }
+        """Deterministic default extraction or fallback with recent items given top weight."""
+        recent_items = context.get("most_recent_knowledge_priority", [])
+        recent_topics = []
+        for r in recent_items:
+            recent_topics.extend(r.get("topics") or [])
+            if r.get("title"):
+                recent_topics.append(r.get("title"))
 
-        prompt = f"""
-You are the Knowledge Curator agent for ATH Radar.
-Analyze the following user knowledge sources (profile markdown, notes, projects, learning items, posts):
-
-{context}
-
-Synthesize this into a structured JSON profile adhering to this schema:
-{{
-  "bio": "1-2 sentence professional bio",
-  "interests": ["list", "of", "interests"],
-  "skills": ["list", "of", "technical", "skills"],
-  "current_learning": ["list", "of", "topics", "actively", "learning"],
-  "active_projects": ["list", "of", "active", "projects"],
-  "recurring_themes": ["recurring", "technical", "themes"],
-  "topics_understood": ["topics", "user", "understands", "deeply"],
-  "topics_exploring": ["topics", "currently", "being", "explored"],
-  "content_areas": ["viable", "content", "domains"],
-  "tone_guidelines": "rules for content tone and authenticity"
-}}
-
-IMPORTANT: Do NOT generate content ideas. Only organize and understand the user's existing knowledge. Do not invent fake skills or projects.
-"""
-        import asyncio
-        try:
-            # Run async call safely
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We are in an async pipeline, so we can use direct await in the pipeline, but here run via helper
-                pass
-        except Exception:
-            pass
+        unique_recent = list(dict.fromkeys(recent_topics))[:8]
 
         return {
             "bio": "Software Engineer & AI Systems Builder focused on applied AI, inference optimization, and developer tools.",
-            "interests": ["Inference Optimization", "Applied AI", "Agentic Architectures", "Developer Tools"],
+            "interests": unique_recent + ["Inference Optimization", "Applied AI", "Agentic Architectures", "Developer Tools"],
             "skills": ["Python", "FastAPI", "PyTorch", "SQLAlchemy", "React", "Docker"],
-            "current_learning": ["Inference Engineering (vLLM, AWQ, speculative decoding)", "Local Model Deployment"],
-            "active_projects": ["ATH Radar", "Local Inference Bench", "Smart Document Parser"],
+            "current_learning": unique_recent[:4] + ["Inference Engineering (vLLM, AWQ, speculative decoding)", "Local Model Deployment"],
+            "active_projects": ["ATH Radar", "Local Inference Bench", "Bodh AI", "Pixie"],
             "recurring_themes": ["Pragmatic engineering over hype", "Cost vs latency trade-offs", "Real-world failure modes"],
             "topics_understood": ["Backend Architecture", "FastAPI", "SQLite/Postgres", "Agent Pipelines"],
-            "topics_exploring": ["Speculative decoding", "Quantization", "KV cache compression"],
+            "topics_exploring": unique_recent[:5] + ["Speculative decoding", "Quantization", "KV cache compression"],
             "content_areas": ["Engineering trade-offs", "Local LLM experiments", "Builder retrospectives"],
             "tone_guidelines": "Authentic, technical depth, pragmatic builder, no buzzword hype."
         }
 
     async def run_async(self, db: Session) -> Dict[str, Any]:
-        """Async version for the orchestrator pipeline."""
-        logger.info(f"[{self.name}] Async synthesis starting...")
-        # 1. Read seed ath.md
+        """Async version for the orchestrator pipeline with heavy recency weightage."""
+        logger.info(f"[{self.name}] Async synthesis starting with high recency weightage...")
         ath_markdown = ""
         if settings.ATH_MD_PATH.exists():
             try:
@@ -160,16 +159,51 @@ IMPORTANT: Do NOT generate content ideas. Only organize and understand the user'
             except Exception as e:
                 logger.warning(f"[{self.name}] Could not read {settings.ATH_MD_PATH}: {e}")
 
-        # 2. Gather DB items
-        notes = db.query(Note).filter(Note.is_approved == True).all()
-        projects = db.query(Project).all()
-        learning_items = db.query(LearningItem).all()
-        knowledge_items = db.query(KnowledgeItem).filter(KnowledgeItem.is_archived == False).all()
+        # Gather DB items ordered by recency
+        notes = db.query(Note).filter(Note.is_approved == True).order_by(Note.created_at.desc()).all()
+        projects = db.query(Project).order_by(Project.created_at.desc()).all()
+        learning_items = db.query(LearningItem).order_by(LearningItem.created_at.desc()).all()
+        knowledge_items = db.query(KnowledgeItem).filter(KnowledgeItem.is_archived == False).order_by(KnowledgeItem.created_at.desc()).all()
         previous_posts = db.query(Post).order_by(Post.posted_at.desc()).limit(10).all()
         feedbacks = db.query(Feedback).order_by(Feedback.created_at.desc()).limit(30).all()
 
+        most_recent_items = []
+        for k in knowledge_items[:6]:
+            most_recent_items.append({
+                "type": f"Knowledge ({k.item_type})",
+                "title": k.title,
+                "content": k.content,
+                "topics": k.topics or [],
+                "date": k.created_at.strftime("%Y-%m-%d") if k.created_at else "recent"
+            })
+        for n in notes[:5]:
+            most_recent_items.append({
+                "type": "Note",
+                "title": n.title,
+                "content": n.content or n.extracted_text or "",
+                "topics": n.topics or [],
+                "date": n.created_at.strftime("%Y-%m-%d") if n.created_at else "recent"
+            })
+        for l in learning_items[:5]:
+            most_recent_items.append({
+                "type": "Learning Log",
+                "title": l.topic,
+                "content": f"{l.description or ''} | Insights: {', '.join(l.key_insights or [])}",
+                "topics": [l.topic],
+                "date": l.created_at.strftime("%Y-%m-%d") if l.created_at else "recent"
+            })
+        for p in projects[:5]:
+            most_recent_items.append({
+                "type": "Project",
+                "title": p.name,
+                "content": f"{p.description or ''} | Stack: {', '.join(p.tech_stack or [])} | Learnings: {p.learnings or ''}",
+                "topics": p.tech_stack or [],
+                "date": p.created_at.strftime("%Y-%m-%d") if p.created_at else "recent"
+            })
+
         curated_context = {
             "ath_md": ath_markdown,
+            "most_recent_knowledge_priority": most_recent_items,
             "notes": [{"title": n.title, "content": n.content, "topics": n.topics} for n in notes],
             "projects": [{"name": p.name, "description": p.description, "tech_stack": p.tech_stack, "learnings": p.learnings} for p in projects],
             "learning": [{"topic": l.topic, "description": l.description, "insights": l.key_insights} for l in learning_items],
@@ -182,20 +216,25 @@ IMPORTANT: Do NOT generate content ideas. Only organize and understand the user'
         if gemini_service.is_configured():
             prompt = f"""
 You are the Knowledge Curator agent for ATH Radar.
-Analyze the following user knowledge sources (profile markdown, notes, projects, learning items, posts):
+Analyze the following user knowledge sources.
 
+CRITICAL WEIGHTAGE RULE:
+Give PARAMOUNT WEIGHTAGE and HIGHEST PRIORITY to the user's MOST RECENTLY ADDED knowledge items, active notes, and newest learning logs in 'most_recent_knowledge_priority'.
+Make sure Ath's newest experiments and current learning topics dominate 'current_learning', 'topics_exploring', and 'interests'.
+
+KNOWLEDGE SOURCES:
 {curated_context}
 
 Synthesize this into a structured JSON profile adhering to this schema:
 {{
   "bio": "1-2 sentence professional bio",
-  "interests": ["list", "of", "interests"],
+  "interests": ["list", "of", "interests", "prioritizing", "recent"],
   "skills": ["list", "of", "technical", "skills"],
-  "current_learning": ["list", "of", "topics", "actively", "learning"],
+  "current_learning": ["list", "of", "topics", "actively", "learning", "from", "recent", "notes"],
   "active_projects": ["list", "of", "active", "projects"],
   "recurring_themes": ["recurring", "technical", "themes"],
   "topics_understood": ["topics", "user", "understands", "deeply"],
-  "topics_exploring": ["topics", "currently", "being", "explored"],
+  "topics_exploring": ["topics", "currently", "being", "explored", "heavily", "weighting", "recent"],
   "content_areas": ["viable", "content", "domains"],
   "tone_guidelines": "rules for content tone and authenticity"
 }}
@@ -205,13 +244,15 @@ IMPORTANT: Do NOT generate content ideas. Only organize and understand the user'
             try:
                 profile_data = await gemini_service.generate_json(
                     prompt=prompt,
-                    system_instruction="You are a strict, factual knowledge curator. Never hallucinate facts about the user."
+                    system_instruction="You are a strict, factual knowledge curator. Give highest priority to recently added knowledge items."
                 )
             except Exception as e:
                 logger.error(f"[{self.name}] Gemini call failed: {e}")
 
         if not profile_data:
             profile_data = self._synthesize_profile(curated_context)
+
+        profile_data["recent_knowledge_highlights"] = most_recent_items
 
         # Update in database
         user_profile = db.query(UserProfile).first()
@@ -233,7 +274,7 @@ IMPORTANT: Do NOT generate content ideas. Only organize and understand the user'
 
         db.commit()
         db.refresh(user_profile)
-        logger.info(f"[{self.name}] User profile successfully updated.")
+        logger.info(f"[{self.name}] User profile successfully updated with recent knowledge weightage.")
         return profile_data
 
 curator_agent = KnowledgeCuratorAgent()
