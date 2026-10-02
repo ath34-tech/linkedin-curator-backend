@@ -45,6 +45,12 @@ def get_user_profile(db: Session = Depends(get_db)):
     profile = db.query(UserProfile).first()
     return profile
 
+@router.post("/refresh-profile", response_model=Optional[UserProfileResponse])
+async def refresh_user_profile(db: Session = Depends(get_db)):
+    from app.agents.curator import curator_agent
+    await curator_agent.run_async(db)
+    return db.query(UserProfile).first()
+
 @router.get("/{id}", response_model=KnowledgeItemResponse)
 def get_knowledge_item(id: int, db: Session = Depends(get_db)):
     item = db.query(KnowledgeItem).filter(KnowledgeItem.id == id).first()

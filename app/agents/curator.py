@@ -96,11 +96,12 @@ class KnowledgeCuratorAgent:
             user_profile = UserProfile(name="ATH")
             db.add(user_profile)
 
+        db_project_names = [p.name for p in projects]
         user_profile.bio = profile_data.get("bio", "Software Engineer & AI Systems Builder")
         user_profile.interests = profile_data.get("interests", ["Inference Optimization", "Applied AI", "Developer Tools"])
         user_profile.skills = profile_data.get("skills", ["Python", "FastAPI", "PyTorch", "vLLM", "React"])
         user_profile.current_learning = profile_data.get("current_learning", ["Inference Engineering", "Agentic Pipelines"])
-        user_profile.active_projects = profile_data.get("active_projects", ["ATH Radar", "Local Inference Bench"])
+        user_profile.active_projects = list(dict.fromkeys(db_project_names + profile_data.get("active_projects", [])))
         user_profile.recurring_themes = profile_data.get("recurring_themes", ["Pragmatic engineering", "Latency vs Cost"])
         user_profile.topics_understood = profile_data.get("topics_understood", ["Full Stack Web", "API Design", "Docker"])
         user_profile.topics_exploring = profile_data.get("topics_exploring", ["Speculative decoding", "AWQ quantization"])
@@ -111,8 +112,9 @@ class KnowledgeCuratorAgent:
         db.commit()
         db.refresh(user_profile)
 
-        logger.info(f"[{self.name}] User knowledge profile updated successfully.")
+        logger.info(f"[{self.name}] User knowledge profile updated successfully with {len(projects)} projects and {len(notes)} notes.")
         return {
+            "bio": user_profile.bio,
             "interests": user_profile.interests,
             "skills": user_profile.skills,
             "current_learning": user_profile.current_learning,
@@ -122,7 +124,44 @@ class KnowledgeCuratorAgent:
             "topics_exploring": user_profile.topics_exploring,
             "content_areas": user_profile.content_areas,
             "tone_guidelines": user_profile.tone_guidelines,
-            "recent_knowledge_highlights": most_recent_items
+            "recent_knowledge_highlights": most_recent_items,
+            "all_projects": [
+                {
+                    "name": p.name,
+                    "description": p.description or "",
+                    "tech_stack": p.tech_stack or [],
+                    "learnings": p.learnings or "",
+                    "challenges": p.challenges or "",
+                    "status": p.status or "active"
+                }
+                for p in projects
+            ],
+            "all_learning": [
+                {
+                    "topic": l.topic,
+                    "description": l.description or "",
+                    "insights": l.key_insights or [],
+                    "status": l.status or "learning"
+                }
+                for l in learning_items
+            ],
+            "all_notes": [
+                {
+                    "title": n.title,
+                    "content": n.content or n.extracted_text or "",
+                    "topics": n.topics or []
+                }
+                for n in notes
+            ],
+            "all_knowledge": [
+                {
+                    "title": k.title,
+                    "content": k.content or "",
+                    "topics": k.topics or [],
+                    "type": k.item_type
+                }
+                for k in knowledge_items
+            ]
         }
 
     def _synthesize_profile(self, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -136,12 +175,20 @@ class KnowledgeCuratorAgent:
 
         unique_recent = list(dict.fromkeys(recent_topics))[:8]
 
+        all_projects_ctx = context.get("projects", [])
+        project_names = [p.get("name") for p in all_projects_ctx if p.get("name")]
+        if not project_names:
+            project_names = ["ATH Radar", "Local Inference Bench", "Bodh AI", "Pixie"]
+
+        all_learning_ctx = context.get("learning", [])
+        learning_topics = [l.get("topic") for l in all_learning_ctx if l.get("topic")]
+
         return {
             "bio": "Software Engineer & AI Systems Builder focused on applied AI, inference optimization, and developer tools.",
-            "interests": unique_recent + ["Inference Optimization", "Applied AI", "Agentic Architectures", "Developer Tools"],
+            "interests": unique_recent + learning_topics[:4] + ["Inference Optimization", "Applied AI", "Developer Tools"],
             "skills": ["Python", "FastAPI", "PyTorch", "SQLAlchemy", "React", "Docker"],
-            "current_learning": unique_recent[:4] + ["Inference Engineering (vLLM, AWQ, speculative decoding)", "Local Model Deployment"],
-            "active_projects": ["ATH Radar", "Local Inference Bench", "Bodh AI", "Pixie"],
+            "current_learning": unique_recent[:4] + learning_topics[:3] + ["Inference Engineering", "Local Model Deployment"],
+            "active_projects": project_names,
             "recurring_themes": ["Pragmatic engineering over hype", "Cost vs latency trade-offs", "Real-world failure modes"],
             "topics_understood": ["Backend Architecture", "FastAPI", "SQLite/Postgres", "Agent Pipelines"],
             "topics_exploring": unique_recent[:5] + ["Speculative decoding", "Quantization", "KV cache compression"],
@@ -253,6 +300,43 @@ IMPORTANT: Do NOT generate content ideas. Only organize and understand the user'
             profile_data = self._synthesize_profile(curated_context)
 
         profile_data["recent_knowledge_highlights"] = most_recent_items
+        profile_data["all_projects"] = [
+            {
+                "name": p.name,
+                "description": p.description or "",
+                "tech_stack": p.tech_stack or [],
+                "learnings": p.learnings or "",
+                "challenges": p.challenges or "",
+                "status": p.status or "active"
+            }
+            for p in projects
+        ]
+        profile_data["all_learning"] = [
+            {
+                "topic": l.topic,
+                "description": l.description or "",
+                "insights": l.key_insights or [],
+                "status": l.status or "learning"
+            }
+            for l in learning_items
+        ]
+        profile_data["all_notes"] = [
+            {
+                "title": n.title,
+                "content": n.content or n.extracted_text or "",
+                "topics": n.topics or []
+            }
+            for n in notes
+        ]
+        profile_data["all_knowledge"] = [
+            {
+                "title": k.title,
+                "content": k.content or "",
+                "topics": k.topics or [],
+                "type": k.item_type
+            }
+            for k in knowledge_items
+        ]
 
         # Update in database
         user_profile = db.query(UserProfile).first()
@@ -260,11 +344,12 @@ IMPORTANT: Do NOT generate content ideas. Only organize and understand the user'
             user_profile = UserProfile(name="ATH")
             db.add(user_profile)
 
+        db_project_names = [p.name for p in projects]
         user_profile.bio = profile_data.get("bio", "Software Engineer & AI Systems Builder")
         user_profile.interests = profile_data.get("interests", [])
         user_profile.skills = profile_data.get("skills", [])
         user_profile.current_learning = profile_data.get("current_learning", [])
-        user_profile.active_projects = profile_data.get("active_projects", [])
+        user_profile.active_projects = list(dict.fromkeys(db_project_names + profile_data.get("active_projects", [])))
         user_profile.recurring_themes = profile_data.get("recurring_themes", [])
         user_profile.topics_understood = profile_data.get("topics_understood", [])
         user_profile.topics_exploring = profile_data.get("topics_exploring", [])
@@ -274,7 +359,7 @@ IMPORTANT: Do NOT generate content ideas. Only organize and understand the user'
 
         db.commit()
         db.refresh(user_profile)
-        logger.info(f"[{self.name}] User profile successfully updated with recent knowledge weightage.")
+        logger.info(f"[{self.name}] User profile successfully updated with {len(projects)} projects, {len(notes)} notes, and {len(learning_items)} learning items.")
         return profile_data
 
 curator_agent = KnowledgeCuratorAgent()

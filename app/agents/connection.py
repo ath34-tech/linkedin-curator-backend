@@ -94,23 +94,54 @@ class ConnectionAgent:
                 "rationale": f"ATH {'recently added notes on ' if is_recent_match else 'actively explores '} {', '.join(matched_items)}, giving immediate grounded authority on this trend."
             }
 
+        # Dynamically build complete registered projects context
+        all_projects = user_profile.get("all_projects", [])
+        if all_projects:
+            proj_lines = []
+            for p in all_projects:
+                desc = p.get('description', '')
+                stack = ', '.join(p.get('tech_stack') or [])
+                learnings = p.get('learnings') or p.get('challenges') or ''
+                proj_lines.append(f"- {p.get('name')}: {desc} | Stack: {stack} | Learnings/Scars: {learnings}")
+            projects_text = "ATH'S REGISTERED PROJECTS (CONNECT TO ANY OF THESE DYNAMICALLY — DO NOT FIXATE ON ONLY 1 OR 2):\n" + "\n".join(proj_lines)
+        else:
+            projects_text = """ATH'S REGISTERED PROJECTS:
+- Bodh AI: Real-time Hindi/Hinglish AI voice interviewer (LiveKit, WebRTC, Deepgram, Gemini). Battled awkward pauses, end-to-end latency, and robotic conversational flows.
+- Pixie: Local-LLM desktop productivity agent in Rust/Tauri/Python. Built custom orchestration without LangChain/LangGraph, fought RAM/latency bottlenecks on 8GB machine.
+- RouteLLMESH: Self-hosted LLM gateway with smart heuristic routing to stop burning money on big model APIs.
+- Kundali Dating App: Consumer product blending algorithmic cultural matching with modern AI.
+- Vcriate: Technical assessment reviewer (inspecting DSA & SQL edge cases, constraints, and coding realities)."""
+
+        # Dynamically build learning logs context
+        all_learning = user_profile.get("all_learning", [])
+        learning_text = ""
+        if all_learning:
+            learn_lines = [f"- {l.get('topic')}: {l.get('description', '')} (Key insights: {', '.join(l.get('insights') or [])})" for l in all_learning[:8]]
+            learning_text = "ATH'S ACTIVE LEARNING TOPICS:\n" + "\n".join(learn_lines)
+
+        # Dynamically build notes context
+        all_notes = user_profile.get("all_notes", [])
+        notes_text = ""
+        if all_notes:
+            notes_lines = [f"- {n.get('title')}: {n.get('content', '')[:140]}" for n in all_notes[:8]]
+            notes_text = "ATH'S KNOWLEDGE NOTES:\n" + "\n".join(notes_lines)
+
         prompt = f"""
 You are the Connection Agent for ATH Radar.
 Your mission is to find the gripping PERSONAL STORY or BUILDER NARRATIVE connecting this external trend to Ath's real work.
 
-CRITICAL WEIGHTAGE DIRECTIVE:
-Ath explicitly wants his content radar to give HIGHEST WEIGHTAGE (80% preference) to his MOST RECENTLY ADDED knowledge items and active notes.
-Whenever an external trend connects to or challenges his recent notes, learning logs, or projects listed below, PRIORITIZE THAT ANGLE over generic background!
+CRITICAL WEIGHTAGE & DIVERSITY DIRECTIVE:
+1. Give HIGHEST WEIGHTAGE (80% preference) to Ath's MOST RECENTLY ADDED knowledge items and active notes.
+2. DO NOT FIXATE ON ONLY 1 OR 2 PROJECTS! Ath has multiple projects, active learning topics, and engineering notes.
+3. Review ALL projects and ALL knowledge below. Connect this trend to whichever project, note, or learning log offers the most natural, authentic, grounded narrative.
 
 {recent_text}
 
-ATH'S CORE FLAGSHIP PROJECTS (BASELINE GROUNDING):
-- Bodh AI: Real-time Hindi/Hinglish AI voice interviewer (LiveKit, WebRTC, Deepgram, Gemini). Battled awkward pauses, end-to-end latency, and robotic conversational flows.
-- Pixie: Local-LLM desktop productivity agent in Rust/Tauri/Python. Built custom orchestration without LangChain/LangGraph, fought RAM/latency bottlenecks on small machines.
-- RouteLLMESH: Self-hosted LLM gateway with smart heuristic routing to stop burning money on big model APIs.
-- Kundali Dating App: Consumer product blending algorithmic cultural matching with modern AI.
-- Current Role: Technical assessment reviewer at Vcriate (inspecting DSA & SQL edge cases, constraints, and coding realities).
-- Current Learning: Deep-diving into system design, inference engineering (vLLM, KV cache, batching), and preparing an 'Agentic System Design' YouTube breakdown for @TeachMeAth.
+{projects_text}
+
+{learning_text}
+
+{notes_text}
 
 EXTERNAL TREND:
 - Title: {trend.title}

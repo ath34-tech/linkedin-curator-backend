@@ -88,35 +88,49 @@ class ContentStrategistAgent:
     ) -> List[Dict[str, Any]]:
         """Generate 2-3 distinct candidate angles per connection."""
         if not gemini_service.is_configured():
-            # Deterministic generator
-            return [
+            # Deterministic generator with diverse angles and formats
+            templates = [
                 {
-                    "title": f"The Latency Trade-off in {trend.title}",
-                    "hook": f"When benchmarking {trend.title} against raw execution on local hardware, here is the exact failure mode.",
-                    "angle": "Practitioner benchmark & cost analysis",
-                    "explanation": f"Analyzing {trend.title} through real engineering implementation rather than abstract theory.",
-                    "why_this_is_relevant_to_user": f"Directly ties into ATH's active work on {', '.join(user_profile.get('active_projects', ['Radar']))}.",
-                    "personal_connection": connection.connection_angle,
-                    "suggested_format": "technical_breakdown",
-                    "novelty": 0.8,
-                    "relevance": 0.85,
-                    "timeliness": 0.9,
-                    "confidence": 0.8
-                },
-                {
-                    "title": f"The Hidden Constraint in {trend.title}",
-                    "hook": f"Before deploying {trend.title}, here is the memory bottleneck that surfaced under load.",
+                    "title": f"The Production Autopsy of {trend.title}",
+                    "hook": f"Everyone's talking about {trend.title} in theory. Here is the unglamorous memory bottleneck that surfaced under load.",
                     "angle": "Critical debugging & architecture limits",
                     "explanation": f"Examines key claims and trade-offs of {trend.title} from a builder's perspective.",
                     "why_this_is_relevant_to_user": f"Builds on ATH's philosophy of pragmatic systems over hype.",
                     "personal_connection": connection.connection_angle,
-                    "suggested_format": "lessons_learned",
-                    "novelty": 0.75,
-                    "relevance": 0.9,
-                    "timeliness": 0.8,
-                    "confidence": 0.85
+                    "suggested_format": "architecture_autopsy",
+                    "novelty": 0.88,
+                    "relevance": 0.92,
+                    "timeliness": 0.85,
+                    "confidence": 0.90
+                },
+                {
+                    "title": f"Why Most Teams Overpay for {trend.title}",
+                    "hook": f"We ran the math on self-hosting vs hosted API tiers for {trend.title}. The 10x markup is terrifying.",
+                    "angle": "Cost & ROI audit vs lean engineering",
+                    "explanation": f"Direct breakdown of compute costs, latency penalties, and when simpler heuristics beat heavy architectures.",
+                    "why_this_is_relevant_to_user": f"Directly parallels ATH's RouteLLMESH gateway and Pixie local agent efficiency.",
+                    "personal_connection": connection.connection_angle,
+                    "suggested_format": "cost_roi_audit",
+                    "novelty": 0.90,
+                    "relevance": 0.88,
+                    "timeliness": 0.90,
+                    "confidence": 0.88
+                },
+                {
+                    "title": f"The Contrarian Reality Check on {trend.title}",
+                    "hook": f"The industry consensus says {trend.title} is mandatory. In practice, 80% of teams would ship faster without it.",
+                    "angle": "Unpopular practitioner take grounded in edge cases",
+                    "explanation": f"Debunking the hype cycle around {trend.title} by showing real implementation overhead and failure modes.",
+                    "why_this_is_relevant_to_user": f"Echoes Ath's decision to avoid bloated agent frameworks in Pixie.",
+                    "personal_connection": connection.connection_angle,
+                    "suggested_format": "contrarian_reality_check",
+                    "novelty": 0.94,
+                    "relevance": 0.90,
+                    "timeliness": 0.88,
+                    "confidence": 0.92
                 }
             ]
+            return templates
 
         recent_knowledge = user_profile.get("recent_knowledge_highlights", [])
         recent_text = ""
@@ -127,8 +141,8 @@ class ContentStrategistAgent:
         prompt = f"""
 You are the elite Content Strategist for ATH (Ath Tripathi).
 Ath wants to build an authentic, magnetic LinkedIn presence as a hands-on AI builder.
-He does NOT want to post dry, boring academic paper summaries or generic news.
-He wants to tell HIS STORY: engineering battles, struggles, contrarian insights, behind-the-scenes architectural decisions, and honest lessons learned.
+He does NOT want repetitive, predictable posts, dry paper summaries, or generic news recaps.
+He wants a rich, varied palette of fresh story types: engineering battles, contrarian teardowns, cost breakdowns, tech showdowns, and mental models.
 
 CRITICAL WEIGHTAGE REQUIREMENT:
 Give HIGHEST WEIGHTAGE to Ath's MOST RECENTLY ADDED knowledge items and active notes.
@@ -136,13 +150,46 @@ Whenever possible, connect the external trend to what Ath just added or explored
 
 {recent_text}
 
-ATH'S CORE FLAGSHIP PROJECTS & BACKGROUND:
-- Bodh AI: Built a real-time Hindi/Hinglish AI voice interviewer. Fought awkward pauses, end-to-end latency, and robotic dialogue flows. Learned that latency > model IQ for real-time speech.
-- Pixie: Desktop AI productivity agent built from scratch in Rust + Tauri + Python. Explicitly rejected LangChain/LangGraph, created custom lightweight tool schema attachments, and fought RAM/context limits on an 8GB machine.
-- RouteLLMESH: Built a custom self-hosted LLM gateway with heuristic model routing to stop burning money on OpenAI/Claude API bills.
-- Vcriate: Works as a technical assessment reviewer, analyzing hundreds of candidates' DSA & SQL edge cases, constraints, and bugs. Knows the real gap between LeetCode and real AI engineering.
-- Kundali Matching Dating App: Consumer product engineering, blending complex cultural astrology matching algorithms with AI.
-- Current Learning: Deconstructing system design, vLLM, KV caches, prefill vs decode, and preparing an 'Agentic System Design' breakdown for his YouTube channel (@TeachMeAth).
+        # Dynamically build complete registered projects context
+        all_projects = user_profile.get("all_projects", [])
+        if all_projects:
+            proj_lines = []
+            for p in all_projects:
+                desc = p.get('description', '')
+                stack = ', '.join(p.get('tech_stack') or [])
+                learnings = p.get('learnings') or p.get('challenges') or ''
+                proj_lines.append(f"- {p.get('name')}: {desc} | Stack: {stack} | Learnings/Scars: {learnings}")
+            projects_text = "ATH'S REGISTERED PROJECTS (ROTATE FREELY ACROSS ANY OF THESE — NEVER LIMIT TO ONLY 1 OR 2):\n" + "\n".join(proj_lines)
+        else:
+            projects_text = """ATH'S REGISTERED PROJECTS:
+- Bodh AI: Built a real-time Hindi/Hinglish AI voice interviewer. Fought awkward pauses, latency, and conversational flows.
+- Pixie: Desktop AI productivity agent built in Rust + Tauri + Python without LangChain/LangGraph.
+- RouteLLMESH: Custom self-hosted LLM gateway with heuristic model routing.
+- Kundali Dating App: Algorithmic cultural matching combined with AI.
+- Vcriate: Technical assessment reviewer (DSA, SQL, edge cases)."""
+
+        all_learning = user_profile.get("all_learning", [])
+        learning_text = ""
+        if all_learning:
+            learn_lines = [f"- {l.get('topic')}: {l.get('description', '')} (Insights: {', '.join(l.get('insights') or [])})" for l in all_learning[:8]]
+            learning_text = "ATH'S CURRENT LEARNING TOPICS:\n" + "\n".join(learn_lines)
+
+        prompt = f"""
+You are the elite Content Strategist for ATH (Ath Tripathi).
+Ath wants to build an authentic, magnetic LinkedIn presence as a hands-on AI builder.
+He does NOT want repetitive, predictable posts, dry paper summaries, or generic news recaps.
+He wants a rich, varied palette of fresh story types: engineering battles, contrarian teardowns, cost breakdowns, tech showdowns, and mental models.
+
+CRITICAL WEIGHTAGE & DIVERSITY DIRECTIVE:
+1. Give HIGHEST WEIGHTAGE to Ath's MOST RECENTLY ADDED knowledge items and active notes.
+2. ROTATE ACROSS ALL OF ATH'S PROJECTS & KNOWLEDGE! Do NOT repeatedly ground ideas in only one project. Explore different projects, notes, and learning logs for distinct ideas.
+3. Whenever possible, connect the external trend to what Ath just added or explored:
+
+{recent_text}
+
+{projects_text}
+
+{learning_text}
 
 EXTERNAL TREND:
 - Title: {trend.title}
@@ -155,12 +202,15 @@ ATH CONNECTION ANGLE:
 HUMAN WRITING PRINCIPLES TO ENFORCE:
 {HUMAN_WRITING_SYSTEM_PROMPT}
 
-LINKEDIN STORYTELLING FORMATS TO GENERATE (Pick 2-3 distinct angles):
-1. **The Builder's Struggle / Post-Mortem**: "I spent 3 weeks trying to solve [X in Bodh AI/Pixie]... here is the counter-intuitive lesson."
-2. **The Contrarian Engineering Take**: Why common hype around this trend breaks down when you actually deploy it on real hardware or under real latency constraints.
-3. **The Unfiltered Confession / Numbers**: Comparing what popular AI influencers say vs what happens when you write raw Python/Rust without bloated frameworks.
-4. **The Code Reviewer's Reality Check**: Connecting this tech shift to real developer habits and common failure modes observed while reviewing assessments.
-5. **The First-Principles Learning Journey**: Breaking down a complex mechanism (like KV cache, inference latency, or agent tools) from the perspective of an engineer building and benchmarking it from scratch.
+AVAILABLE DISTINCT POST FORMATS (Choose 2-3 radically DIFFERENT formats from this menu for contrast):
+1. **contrarian_reality_check**: "The Contrarian Reality Check" — Why common hype or industry consensus around this trend breaks down when deployed in real systems.
+2. **architecture_autopsy**: "Architecture Autopsy" — A microscopic deep-dive into an unglamorous bug, failure mode, memory leak, or latency bottleneck encountered when building with this.
+3. **cost_roi_audit**: "Cost & ROI Audit" — Cold, hard financial & compute numbers comparing hyped hosted APIs vs self-hosted, lightweight alternatives (like RouteLLMESH).
+4. **tech_showdown**: "Tech Showdown / Bake-Off" — Direct head-to-head architectural showdown between two competing approaches (e.g. Raw Rust vs bloated frameworks, vLLM vs Ollama, Heuristics vs Agents).
+5. **reviewer_diary**: "Code Reviewer Diary" — Connecting this tech shift to common rookie anti-patterns or DSA edge cases observed while reviewing engineering assessments at Vcriate.
+6. **builder_war_story**: "Builder War Story" — A gritty first-person battle from shipping Bodh AI or Pixie with concrete metrics and scars ("I spent 3 weeks chasing 400ms latency...").
+7. **mental_model**: "Mental Model / First Principles" — An intuitive, visual framework explaining complex low-level mechanics (KV cache, token prefill vs decode, context compression) from scratch.
+8. **future_prediction**: "18-Month Frontier Prediction" — A bold, high-signal forecast on where this tech is heading based on hard physical and economic constraints.
 
 CRITICAL RULES:
 - Hooks MUST be scroll-stoppers (first 2 lines before "see more" on LinkedIn).
@@ -172,7 +222,7 @@ CRITICAL RULES:
 - Tone MUST be direct, authentic, builder-first, humble yet technically sharp.
 - NEVER fabricate claims. Anchor every story in Ath's real projects.
 
-Return a JSON list of 2-3 objects:
+Return a JSON list of 2-3 objects with DISTINCT suggested_format values:
 [
   {{
     "title": "Magnetic headline with builder intrigue",
@@ -181,10 +231,10 @@ Return a JSON list of 2-3 objects:
     "explanation": "The core story arc: The conflict/problem faced -> What Ath did/observed -> The counter-intuitive discovery",
     "why_this_is_relevant_to_user": "How this builds Ath's reputation as a genuine builder who ships real systems",
     "personal_connection": "Specific connection to Bodh AI, Pixie, RouteLLMESH, Vcriate, or current inference learning",
-    "suggested_format": "builder_postmortem | contrarian_teardown | behind_the_scenes | learning_in_public",
-    "novelty": 0.90,
+    "suggested_format": "contrarian_reality_check | architecture_autopsy | cost_roi_audit | tech_showdown | reviewer_diary | builder_war_story | mental_model | future_prediction",
+    "novelty": 0.92,
     "relevance": 0.95,
-    "timeliness": 0.85,
+    "timeliness": 0.88,
     "confidence": 0.90
   }}
 ]

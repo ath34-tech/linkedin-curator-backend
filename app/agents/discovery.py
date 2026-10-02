@@ -12,7 +12,11 @@ logger = logging.getLogger(__name__)
 STOPWORDS = {
     "a", "an", "the", "and", "or", "in", "on", "at", "to", "for", "with", "of",
     "is", "are", "was", "how", "what", "why", "this", "that", "from", "by", "new",
-    "using", "into", "it", "its", "via", "your", "can", "now", "our", "all", "out"
+    "using", "into", "it", "its", "via", "your", "can", "now", "our", "all", "out",
+    "ai", "llm", "model", "models", "app", "code", "tool", "tools", "system", "systems",
+    "part", "release", "first", "one", "two", "good", "best", "use", "build", "like",
+    "get", "free", "open", "source", "post", "blog", "guide", "day", "week", "year",
+    "about", "more", "make", "some", "time", "just", "over", "such", "than", "them"
 }
 
 class DiscoveryAgent:
@@ -47,9 +51,9 @@ class DiscoveryAgent:
                 "metrics": metrics
             })
 
-        # Sort by composite score (heat + momentum * 1.2 + cross_source bonus)
+        # Sort by composite score (heat + momentum * 1.2 + novelty boost)
         scored_clusters.sort(
-            key=lambda c: c["metrics"]["heat_score"] + (c["metrics"]["momentum_score"] * 1.2),
+            key=lambda c: c["metrics"]["heat_score"] + (c["metrics"]["momentum_score"] * 1.1) + (c["metrics"]["novelty_score"] * 0.4),
             reverse=True
         )
 
@@ -76,14 +80,16 @@ class DiscoveryAgent:
 
     def _cluster_signals(self, signals: List[RawSignal]) -> Dict[str, List[RawSignal]]:
         """
-        Group signals by primary tech keywords and topic intersections.
+        Group signals by distinct tech keywords and topic intersections, avoiding monolithic clusters.
         """
         token_to_signals = defaultdict(list)
         for sig in signals:
             # Combine topics and title tokens
             tokens = set()
             for t in sig.topics:
-                tokens.add(t.lower())
+                clean_t = t.lower().strip()
+                if clean_t and clean_t not in STOPWORDS:
+                    tokens.add(clean_t)
             title_tokens = self._extract_tokens(sig.title)
             for t in title_tokens[:6]:
                 tokens.add(t)
@@ -91,19 +97,22 @@ class DiscoveryAgent:
             for token in tokens:
                 token_to_signals[token].append(sig)
 
-        # Merge clusters that share significant signals
-        # Pick prominent cluster roots (tokens with highest signal count and distinct concepts)
+        # Sort tokens by signal count, but cap any single cluster at 6 signals to avoid swallowing everything
         sorted_tokens = sorted(token_to_signals.items(), key=lambda x: len(x[1]), reverse=True)
         clusters: Dict[str, List[RawSignal]] = {}
         assigned_urls = set()
 
         for token, token_sigs in sorted_tokens:
             unassigned = [s for s in token_sigs if s.url not in assigned_urls]
-            if len(unassigned) >= 2 or (len(unassigned) == 1 and unassigned[0].raw_score > 50):
+            # Form cluster if 2+ unassigned signals or 1 high-gravity signal
+            if len(unassigned) >= 2 or (len(unassigned) == 1 and unassigned[0].raw_score > 35):
                 cluster_name = token.capitalize()
-                clusters[cluster_name] = unassigned
-                for s in unassigned:
+                chosen_signals = unassigned[:6]
+                clusters[cluster_name] = chosen_signals
+                for s in chosen_signals:
                     assigned_urls.add(s.url)
+            if len(clusters) >= 14:
+                break
 
         return clusters
 

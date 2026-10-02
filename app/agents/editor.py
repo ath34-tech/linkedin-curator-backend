@@ -34,8 +34,13 @@ class EditorCriticAgent:
         if not candidates:
             return []
 
-        # Previous posts to avoid repetition
-        previous_posts = [p.title.lower() for p in db.query(Post).limit(20).all()]
+        # Previous posts and previous ideas to avoid repetition
+        previous_posts = [p.title.lower() for p in db.query(Post).limit(50).all()]
+        candidate_ids = {c.id for c in candidates if c.id}
+        prev_ideas = db.query(ContentIdea).filter(
+            ContentIdea.status.in_(["today", "saved", "posted"])
+        ).order_by(ContentIdea.created_at.desc()).limit(150).all()
+        previous_idea_titles = [i.title.lower() for i in prev_ideas if i.id not in candidate_ids]
 
         # 1. Deterministic filter pass (buzzwords, scaffolding, repetition)
         valid_candidates: List[ContentIdea] = []
@@ -48,8 +53,24 @@ class EditorCriticAgent:
                 continue
 
             # Check for previous post overlap
-            if any(idea.title.lower() in prev or prev in idea.title.lower() for prev in previous_posts):
+            title_lower = idea.title.lower()
+            if any(title_lower in prev or prev in title_lower for prev in previous_posts):
                 idea.status = "rejected_repetition"
+                continue
+
+            # Check for previous idea duplicate overlap
+            title_words = set(title_lower.split())
+            is_dup = False
+            for prev_title in previous_idea_titles:
+                prev_words = set(prev_title.split())
+                if title_words and prev_words:
+                    overlap = len(title_words & prev_words) / len(title_words | prev_words)
+                    if overlap >= 0.65 or title_lower == prev_title:
+                        is_dup = True
+                        break
+            if is_dup:
+                logger.info(f"[{self.name}] Rejecting idea '{idea.title}' - duplicates previously curated idea.")
+                idea.status = "rejected_duplicate_idea"
                 continue
 
             valid_candidates.append(idea)
@@ -73,10 +94,73 @@ class EditorCriticAgent:
         # 3. Sort by final score descending
         scored_ideas.sort(key=lambda i: i.final_score, reverse=True)
 
-        # 4. Select top 5-10
-        final_selection = scored_ideas[:10]
-        if len(final_selection) < 5 and scored_ideas:
-            final_selection = scored_ideas[:min(5, len(scored_ideas))]
+        # 4. Enforce strict Topic, Format, and Project Diversity
+        # Prevent monotonous lists of 5 ideas discussing the same topic, using the same template, or citing only 1 project
+        final_selection: List[ContentIdea] = []
+        selected_trend_ids = set()
+        selected_formats = set()
+        selected_projects = set()
+
+        all_known_projects = [p.get("name", "").lower() for p in user_profile.get("all_projects", []) if p.get("name")]
+
+        def get_associated_project(idea_obj: ContentIdea) -> str:
+            combined = f"{idea_obj.personal_connection or ''} {idea_obj.why_user_can_talk_about_it or ''}".lower()
+            for proj in all_known_projects:
+                if proj in combined:
+                    return proj
+            return "general"
+
+        # Pass 1: Unique Trend, Unique Format, and Varied Project
+        for idea in scored_ideas:
+            if len(final_selection) >= 5:
+                break
+            trend_key = idea.trend_id or idea.related_trend or idea.title
+            fmt_key = idea.suggested_format or "breakdown"
+            proj_key = get_associated_project(idea)
+
+            # If project is already selected twice, encourage rotating to other projects
+            proj_count = list(selected_projects).count(proj_key) if proj_key != "general" else 0
+
+            if trend_key not in selected_trend_ids and fmt_key not in selected_formats and proj_count < 2:
+                final_selection.append(idea)
+                selected_trend_ids.add(trend_key)
+                selected_formats.add(fmt_key)
+                if proj_key != "general":
+                    selected_projects.add(proj_key)
+
+        # Pass 2: Unique Trend & Format (relax project constraint)
+        if len(final_selection) < 5:
+            for idea in scored_ideas:
+                if len(final_selection) >= 5:
+                    break
+                if idea in final_selection:
+                    continue
+                trend_key = idea.trend_id or idea.related_trend or idea.title
+                fmt_key = idea.suggested_format or "breakdown"
+                if trend_key not in selected_trend_ids and fmt_key not in selected_formats:
+                    final_selection.append(idea)
+                    selected_trend_ids.add(trend_key)
+                    selected_formats.add(fmt_key)
+
+        # Pass 3: Unique Trend (relax format constraint to ensure 5 distinct trends)
+        if len(final_selection) < 5:
+            for idea in scored_ideas:
+                if len(final_selection) >= 5:
+                    break
+                if idea in final_selection:
+                    continue
+                trend_key = idea.trend_id or idea.related_trend or idea.title
+                if trend_key not in selected_trend_ids:
+                    final_selection.append(idea)
+                    selected_trend_ids.add(trend_key)
+
+        # Pass 4: Backfill from remaining top scoring ideas if total trends < 5
+        if len(final_selection) < 5:
+            for idea in scored_ideas:
+                if len(final_selection) >= 5:
+                    break
+                if idea not in final_selection:
+                    final_selection.append(idea)
 
         for idea in final_selection:
             idea.is_editor_approved = True
@@ -86,7 +170,7 @@ class EditorCriticAgent:
         for idea in final_selection:
             db.refresh(idea)
 
-        logger.info(f"[{self.name}] Finalized {len(final_selection)} premier content ideas for today's radar.")
+        logger.info(f"[{self.name}] Finalized {len(final_selection)} diverse premier content ideas for today's radar.")
         return final_selection
 
     async def _critique_idea(

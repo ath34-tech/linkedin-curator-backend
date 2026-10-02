@@ -8,6 +8,10 @@ DEFAULT_FEEDS = [
     {"name": "Simon Willison Weblog", "url": "https://simonwillison.net/atom/everything/"},
     {"name": "Hugging Face Blog", "url": "https://huggingface.co/blog/feed.xml"},
     {"name": "GitHub Blog", "url": "https://github.blog/feed/"},
+    {"name": "Cloudflare Engineering", "url": "https://blog.cloudflare.com/rss/"},
+    {"name": "The Pragmatic Engineer", "url": "https://newsletter.pragmaticengineer.com/feed"},
+    {"name": "Latent Space", "url": "https://www.latent.space/feed"},
+    {"name": "Martin Fowler", "url": "https://martinfowler.com/feed.atom"},
 ]
 
 class RSSFeedSource(BaseSource):

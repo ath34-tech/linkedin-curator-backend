@@ -15,24 +15,43 @@ class GitHubSource(BaseSource):
             "User-Agent": "ATH-Radar-Agent"
         }
         
-        # Look for recently updated or created repositories in AI/Dev tools
+        # Query across diverse engineering domains: inference, dev tools, systems, agents, databases
         cutoff_date = (datetime.datetime.utcnow() - datetime.timedelta(days=14)).strftime("%Y-%m-%d")
-        query = f"stars:>30 pushed:>{cutoff_date} ai in:name,description,topics"
+        queries = [
+            f"stars:>40 pushed:>{cutoff_date} (inference OR vllm OR llm OR gateway OR latency) in:name,description,topics",
+            f"stars:>40 pushed:>{cutoff_date} (cli OR \"developer tool\" OR \"terminal\" OR benchmark) in:name,description,topics",
+            f"stars:>40 pushed:>{cutoff_date} (agent OR \"tool use\" OR workflow OR local) in:name,description,topics",
+            f"stars:>40 pushed:>{cutoff_date} (database OR sqlite OR vector OR cache OR rust) in:name,description,topics"
+        ]
+        import random
+        # Pick 2 complementary queries per fetch
+        chosen_queries = random.sample(queries, 2)
 
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(
-                self.endpoint,
-                headers=headers,
-                params={
-                    "q": query,
-                    "sort": "stars",
-                    "order": "desc",
-                    "per_page": min(limit, 30)
-                }
-            )
-            response.raise_for_status()
-            data = response.json()
-            items = data.get("items", [])
+            items = []
+            seen_repos = set()
+            per_query_limit = max(10, limit // 2)
+
+            for q in chosen_queries:
+                try:
+                    response = await client.get(
+                        self.endpoint,
+                        headers=headers,
+                        params={
+                            "q": q,
+                            "sort": "stars",
+                            "order": "desc",
+                            "per_page": per_query_limit
+                        }
+                    )
+                    if response.status_code == 200:
+                        batch = response.json().get("items", [])
+                        for b in batch:
+                            if b.get("html_url") not in seen_repos:
+                                seen_repos.add(b.get("html_url"))
+                                items.append(b)
+                except Exception:
+                    continue
 
             for item in items:
                 name = item.get("full_name") or item.get("name")

@@ -9,8 +9,9 @@ class DevToSource(BaseSource):
         self.endpoint = "https://dev.to/api/articles"
 
     async def fetch(self, limit: int = 25) -> List[RawSignal]:
-        signals: List[RawSignal] = []
-        tags = ["ai", "python", "architecture", "devops"]
+        all_tags = ["architecture", "systemdesign", "rust", "python", "ai", "devops", "webdev", "performance", "database"]
+        import random
+        tags = random.sample(all_tags, 5)
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             for tag in tags:
