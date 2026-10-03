@@ -284,12 +284,20 @@ class TelegramStatusResponse(BaseModel):
 # Pipeline Run
 class PipelineRunResponse(BaseModel):
     status: str
-    signals_collected: int
-    signals_deduped: int
-    trends_found: int
-    trends_researched: int
-    connections_found: int
-    ideas_generated: int
-    final_ideas_selected: int
-    duration_seconds: float
+    signals_collected: int = 0
+    signals_deduped: int = 0
+    trends_found: int = 0
+    trends_researched: int = 0
+    connections_found: int = 0
+    ideas_generated: int = 0
+    final_ideas_selected: int = 0
+    duration_seconds: float = 0.0
     message: str
+
+class PipelineStatusResponse(BaseModel):
+    is_running: bool
+    status: str
+    current_step: str
+    last_result: Optional[Dict[str, Any]] = None
+    last_run_at: Optional[str] = None
+    error: Optional[str] = None

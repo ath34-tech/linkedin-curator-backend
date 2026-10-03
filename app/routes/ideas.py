@@ -1,14 +1,14 @@
 import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.models.database import get_db
 from app.models.models import ContentIdea, Feedback, Post
 from app.schemas.schemas import (
     ContentIdeaResponse, FeedbackCreate, PostCreate, PipelineRunResponse,
-    IdeaRewriteRequest, IdeaDraftRequest, IdeaDraftResponse
+    PipelineStatusResponse, IdeaRewriteRequest, IdeaDraftRequest, IdeaDraftResponse
 )
-from app.orchestrator.pipeline import run_pipeline
+from app.orchestrator.pipeline import run_pipeline, get_pipeline_state
 from app.services.gemini import gemini_service
 from app.services.writing_style import (
     HUMAN_WRITING_SYSTEM_PROMPT,
@@ -261,9 +261,29 @@ Output ONLY the final post text.
         draft_content=fallback_content
     )
 
+@router.get("/pipeline-status", response_model=PipelineStatusResponse)
+def get_pipeline_status():
+    """Check current status and step of the radar pipeline."""
+    return get_pipeline_state()
+
 @router.post("/run-pipeline", response_model=PipelineRunResponse)
-async def trigger_pipeline_run(db: Session = Depends(get_db)):
-    """Trigger manual execution of the 6-agent radar pipeline."""
-    result = await run_pipeline(send_telegram=True, db=db)
-    return result
+async def trigger_pipeline_run(background_tasks: BackgroundTasks):
+    """
+    Trigger execution of the 6-agent radar pipeline in the background.
+    Responds immediately (preventing HTTP timeouts / connection drops on Render).
+    """
+    state = get_pipeline_state()
+    if state.get("is_running"):
+        return PipelineRunResponse(
+            status="running",
+            message="Radar pipeline is already actively running in the background. Fresh ideas will appear shortly."
+        )
+
+    # Launch background task
+    background_tasks.add_task(run_pipeline, send_telegram=True)
+
+    return PipelineRunResponse(
+        status="started",
+        message="Radar pipeline launched in the background. Sourcing feeds and synthesizing ideas..."
+    )
 
