@@ -138,18 +138,6 @@ class ContentStrategistAgent:
             lines = [f"- [{item.get('type', 'Item').upper()}] {item.get('title')}: {item.get('content', '')[:140]}" for item in recent_knowledge[:6]]
             recent_text = "🔥 ATH'S MOST RECENTLY ADDED KNOWLEDGE (HIGHEST WEIGHTAGE - CONNECT IDEAS HERE FIRST):\n" + "\n".join(lines)
 
-        prompt = f"""
-You are the elite Content Strategist for ATH (Ath Tripathi).
-Ath wants to build an authentic, magnetic LinkedIn presence as a hands-on AI builder.
-He does NOT want repetitive, predictable posts, dry paper summaries, or generic news recaps.
-He wants a rich, varied palette of fresh story types: engineering battles, contrarian teardowns, cost breakdowns, tech showdowns, and mental models.
-
-CRITICAL WEIGHTAGE REQUIREMENT:
-Give HIGHEST WEIGHTAGE to Ath's MOST RECENTLY ADDED knowledge items and active notes.
-Whenever possible, connect the external trend to what Ath just added or explored:
-
-{recent_text}
-
         # Dynamically build complete registered projects context
         all_projects = user_profile.get("all_projects", [])
         if all_projects:
